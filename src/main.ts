@@ -142,7 +142,7 @@ async function parse() {
                 let fees = Math.ceil(bytes / 7500) * 0.001
                 console.log('-----> FEES ARE', fees, 'LYRA')
 
-                if (balance.balance < fees) {
+                if (balance.balance < 1) {
                   console.log('-----> NEED TO FUND ADDRESS', author.address)
                   let funded = await scrypta.fundAddress(masterKey.prv, author.address, fees)
                   await scrypta.sleep(1000)
@@ -164,6 +164,11 @@ async function parse() {
                     console.log('ERROR WHILE WRITING NEWS')
                   }
                   await scrypta.sleep(3000)
+                  let servicefee = 1 - fees - 0.001
+                  let serviceKey = await scrypta.deriveKeyFromSeed(xsid.seed, 'm/0')
+                  console.log('SENDING SERVICE FEE TO ' + serviceKey.pub)
+                  await scrypta.fundAddress(masterKey.prv, serviceKey.pub, servicefee)
+                  await scrypta.sleep(1000)
                   scrypta.debug = false
                 }
               }
