@@ -5,7 +5,6 @@ require('dotenv').config()
 const scrypta = new ScryptaCore
 scrypta.staticnodes = true
 import * as PouchDB from 'pouchdb'
-import { scrypt, sign } from 'crypto'
 PouchDB.plugin(require('pouchdb-find'))
 const fs = require('fs')
 let Parser = require('rss-parser')
@@ -40,7 +39,7 @@ async function bootstrap() {
       parse()
       setInterval(function () {
         parse()
-      }, 60000)
+      }, 120000)
     } else {
       console.log('UNABLE TO READ MAIN SID, WRONG PASSWORD.')
     }
@@ -72,7 +71,6 @@ async function parse() {
           let hashmanager = await scrypta.hash(feeds[k].manager)
           let pathmanager = await scrypta.hashtopath(hashmanager)
           let masterKey = await scrypta.deriveKeyFromSeed(xsid.seed, pathmanager)
-          console.log(pathmanager)
           console.log('MASTER KEY IS', masterKey.pub)
           let masterBalance = await scrypta.get('/balance/' + masterKey.pub)
 
@@ -165,9 +163,8 @@ async function parse() {
                   } else {
                     console.log('ERROR WHILE WRITING NEWS')
                   }
-                  await scrypta.sleep(2000)
+                  await scrypta.sleep(3000)
                   scrypta.debug = false
-
                 }
               }
 
@@ -184,6 +181,7 @@ async function parse() {
       isParsing = false
 
     } catch (e) {
+      console.log(e)
       isParsing = false
     }
   }
