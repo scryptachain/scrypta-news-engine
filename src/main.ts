@@ -68,6 +68,8 @@ async function parse() {
         let xsid = await scrypta.readxKey(process.env.MAIN_PWD, process.env.MAIN_SID)
 
         if (xsid !== false) {
+          let serviceKey = await scrypta.deriveKeyFromSeed(xsid.seed, 'm/0')
+          console.log('SERVICE KEY IS ' + serviceKey.pub)
           let hashmanager = await scrypta.hash(feeds[k].manager)
           let pathmanager = await scrypta.hashtopath(hashmanager)
           let masterKey = await scrypta.deriveKeyFromSeed(xsid.seed, pathmanager)
@@ -120,7 +122,7 @@ async function parse() {
               let guidHash = await scrypta.hash(item.guid)
               let newsHash = await scrypta.hash(toStore)
               let needWrite = false
-              let check = await scrypta.post('/read', { address: author.address, refID: guidHash, protocol: 'news://' })
+              let check = await scrypta.post('/read', { address: author.address, refID: guidHash, protocol: 'news://', limit: 999999999999 })
               if (check.data.length === 0) {
                 needWrite = true
               } else {
@@ -165,7 +167,6 @@ async function parse() {
                   }
                   await scrypta.sleep(3000)
                   let servicefee = 1 - fees - 0.001
-                  let serviceKey = await scrypta.deriveKeyFromSeed(xsid.seed, 'm/0')
                   console.log('SENDING SERVICE FEE TO ' + serviceKey.pub)
                   await scrypta.fundAddress(masterKey.prv, serviceKey.pub, servicefee)
                   await scrypta.sleep(1000)
