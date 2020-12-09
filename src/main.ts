@@ -58,129 +58,138 @@ async function parse() {
       let request = await scrypta.createContractRequest(id.walletstore, '123456', { contract: 'Le9G4AYSGbGqonH7QEjFHDeVAMSPxK9KWt', function: 'index', params: { type: true } })
       let node = await scrypta.returnFirstNode()
       let feeds = await scrypta.sendContractRequest(request, node)
-
       for (let k in feeds) {
         let url = feeds[k].feed
-        let feed = await parser.parseURL(url);
-        console.log('PARSING FEED: ' + feed.title);
+        console.log('PARSING ' + url)
+        let feed
+        try{
+          feed = await parser.parseURL(url);
+        }catch(e){
+          console.log('CAN\'T PARSE FEED')
+        }
+        if(feed !== undefined && feed.title !== undefined){
+          console.log('PARSING FEED: ' + feed.title);
 
-        let i = 0
-        let xsid = await scrypta.readxKey(process.env.MAIN_PWD, process.env.MAIN_SID)
+          let i = 0
+          let xsid = await scrypta.readxKey(process.env.MAIN_PWD, process.env.MAIN_SID)
 
-        if (xsid !== false) {
-          let serviceKey = await scrypta.deriveKeyFromSeed(xsid.seed, 'm/0')
-          console.log('SERVICE KEY IS ' + serviceKey.pub)
-          let hashmanager = await scrypta.hash(feeds[k].manager)
-          let pathmanager = await scrypta.hashtopath(hashmanager)
-          let masterKey = await scrypta.deriveKeyFromSeed(xsid.seed, pathmanager)
-          console.log('MASTER KEY IS', masterKey.pub)
-          let masterBalance = await scrypta.get('/balance/' + masterKey.pub)
+          if (xsid !== false) {
+            let serviceKey = await scrypta.deriveKeyFromSeed(xsid.seed, 'm/0')
+            console.log('SERVICE KEY IS ' + serviceKey.pub)
+            let hashmanager = await scrypta.hash(feeds[k].manager)
+            let pathmanager = await scrypta.hashtopath(hashmanager)
+            let masterKey = await scrypta.deriveKeyFromSeed(xsid.seed, pathmanager)
+            console.log('MASTER KEY IS', masterKey.pub)
+            let masterBalance = await scrypta.get('/balance/' + masterKey.pub)
 
-          if (masterBalance.balance > 0.5) {
-            for (let k in feed.items) {
-              let item = feed.items[k]
-              console.log('CHECKING ITEM #' + i, item.title)
-              console.log('-> PUBLISHED AT ' + item.link)
-              console.log('--> WRITTEN BY ' + item.creator)
-              let hash = await scrypta.hash(masterKey.pub + '*' + item.creator)
-              let path = await scrypta.hashtopath(hash)
-              let authorKey = await scrypta.deriveKeyFromSeed(xsid.seed, path)
+            if (masterBalance.balance > 0.5) {
+              for (let k in feed.items) {
+                let item = feed.items[k]
+                console.log('CHECKING ITEM #' + i, item.title)
+                console.log('-> PUBLISHED AT ' + item.link)
+                console.log('--> WRITTEN BY ' + item.creator)
+                let hash = await scrypta.hash(masterKey.pub + '*' + item.creator)
+                let path = await scrypta.hashtopath(hash)
+                let authorKey = await scrypta.deriveKeyFromSeed(xsid.seed, path)
 
-              let author = {
-                name: item.creator,
-                hash: hash,
-                address: authorKey.pub,
-                prv: authorKey.prv,
-                path: path,
-                xpub: xsid.xpub
-              }
+                let author = {
+                  name: item.creator,
+                  hash: hash,
+                  address: authorKey.pub,
+                  prv: authorKey.prv,
+                  path: path,
+                  xpub: xsid.xpub
+                }
 
-              console.log('---> AUTHOR ADDRESS IS', authorKey.pub)
+                console.log('---> AUTHOR ADDRESS IS', authorKey.pub)
 
-              item.compressed = LZUTF8.compress(item['content:encoded'], { outputEncoding: 'Base64' })
-              item.creator = LZUTF8.compress(item.creator, { outputEncoding: 'Base64' })
-              item.title = LZUTF8.compress(item.title, { outputEncoding: 'Base64' })
-              item.link = LZUTF8.compress(item.link, { outputEncoding: 'Base64' })
-              item.guid = LZUTF8.compress(item.guid, { outputEncoding: 'Base64' })
-              item.tags = LZUTF8.compress(JSON.stringify(item.categories), { outputEncoding: 'Base64' })
+                item.compressed = LZUTF8.compress(item['content:encoded'], { outputEncoding: 'Base64' })
+                item.creator = LZUTF8.compress(item.creator, { outputEncoding: 'Base64' })
+                item.title = LZUTF8.compress(item.title, { outputEncoding: 'Base64' })
+                item.link = LZUTF8.compress(item.link, { outputEncoding: 'Base64' })
+                item.guid = LZUTF8.compress(item.guid, { outputEncoding: 'Base64' })
+                item.tags = LZUTF8.compress(JSON.stringify(item.categories), { outputEncoding: 'Base64' })
 
-              item['pubdate'] = item['isoDate']
-              item['version'] = 2
-              delete item['content:encoded']
-              delete item['content:encodedSnippet']
-              delete item['dc:creator']
-              delete item['categories']
-              delete item['pubDate']
-              delete item['content']
-              delete item['contentSnippet']
-              delete item['isoDate']
+                item['pubdate'] = item['isoDate']
+                item['version'] = 2
+                delete item['content:encoded']
+                delete item['content:encodedSnippet']
+                delete item['dc:creator']
+                delete item['categories']
+                delete item['pubDate']
+                delete item['content']
+                delete item['contentSnippet']
+                delete item['isoDate']
 
-              let signed = await scrypta.signMessage(masterKey.prv, JSON.stringify(item))
-              let toStore = JSON.stringify(signed)
+                let signed = await scrypta.signMessage(masterKey.prv, JSON.stringify(item))
+                let toStore = JSON.stringify(signed)
 
-              let uuid = ''
-              let guidHash = await scrypta.hash(item.guid)
-              let newsHash = await scrypta.hash(toStore)
-              let needWrite = false
-              let check = await scrypta.post('/read', { address: author.address, refID: guidHash, protocol: 'news://', limit: 999999999999 })
-              if (check.data.length === 0) {
-                needWrite = true
-              } else {
-                let toCheck = check.data[0].data
-                let checkHash = await scrypta.hash(JSON.stringify(toCheck))
-                if (checkHash !== newsHash) {
-                  console.log('HASH IS CHANGED, NEED TO UPDATE!')
-                  uuid = check.data[0].uuid
+                let uuid = ''
+                let guidHash = await scrypta.hash(item.guid)
+                let newsHash = await scrypta.hash(toStore)
+                let needWrite = false
+                let check = await scrypta.post('/read', { address: author.address, refID: guidHash, protocol: 'news://', limit: 999999999999 })
+                if (check.data.length === 0) {
                   needWrite = true
                 } else {
-                  console.log('HASH NOT CHANGED, IGNORING NEWS.')
-                }
-              }
-
-              if (needWrite) {
-                let balance = await scrypta.get('/balance/' + author.address)
-                console.log('----> BALANCE IS', balance.balance, 'LYRA')
-                let bytes = toStore.length
-                let fees = Math.ceil(bytes / 7500) * 0.001
-                console.log('-----> FEES ARE', fees, 'LYRA')
-
-                if (balance.balance < 1) {
-                  console.log('-----> NEED TO FUND ADDRESS', author.address)
-                  let funded = await scrypta.fundAddress(masterKey.prv, author.address, fees)
-                  await scrypta.sleep(1000)
-                  if (funded === true) {
-                    balance = await scrypta.get('/balance/' + author.address)
+                  let toCheck = check.data[0].data
+                  let checkHash = await scrypta.hash(JSON.stringify(toCheck))
+                  if (checkHash !== newsHash) {
+                    console.log('HASH IS CHANGED, NEED TO UPDATE!')
+                    uuid = check.data[0].uuid
+                    needWrite = true
                   } else {
-                    console.log('ERROR WHILE FUNDING ADDRESS')
+                    console.log('HASH NOT CHANGED, IGNORING NEWS.')
                   }
                 }
 
-                if (balance.balance >= fees) {
-                  console.log('WRITING NEWS INTO THE BLOCKCHAIN!')
-                  let wallet = await scrypta.importPrivateKey(author.prv, 'TEMPORARY', false)
-                  scrypta.debug = true
-                  let stored = await scrypta.write(wallet.walletstore, 'TEMPORARY', toStore, '', guidHash, 'news://', uuid)
-                  if (stored !== false) {
-                    console.log('WRITTEN CORRECTLY INTO THE BLOCKCHAIN!')
-                  } else {
-                    console.log('ERROR WHILE WRITING NEWS')
-                  }
-                  await scrypta.sleep(3000)
-                  let servicefee = 1 - fees - 0.001
-                  console.log('SENDING SERVICE FEE TO ' + serviceKey.pub)
-                  await scrypta.fundAddress(masterKey.prv, serviceKey.pub, servicefee)
-                  await scrypta.sleep(1000)
-                  scrypta.debug = false
-                }
-              }
+                if (needWrite) {
+                  let balance = await scrypta.get('/balance/' + author.address)
+                  console.log('----> BALANCE IS', balance.balance, 'LYRA')
+                  let bytes = toStore.length
+                  let fees = Math.ceil(bytes / 7500) * 0.001
+                  console.log('-----> FEES ARE', fees, 'LYRA')
 
-              i++
+                  if (balance.balance < 1) {
+                    console.log('-----> NEED TO FUND ADDRESS', author.address)
+                    let funded = await scrypta.fundAddress(masterKey.prv, author.address, fees)
+                    await scrypta.sleep(1000)
+                    if (funded === true) {
+                      balance = await scrypta.get('/balance/' + author.address)
+                    } else {
+                      console.log('ERROR WHILE FUNDING ADDRESS')
+                    }
+                  }
+
+                  if (balance.balance >= fees) {
+                    console.log('WRITING NEWS INTO THE BLOCKCHAIN!')
+                    let wallet = await scrypta.importPrivateKey(author.prv, 'TEMPORARY', false)
+                    scrypta.debug = true
+                    let stored = await scrypta.write(wallet.walletstore, 'TEMPORARY', toStore, '', guidHash, 'news://', uuid)
+                    if (stored !== false) {
+                      console.log('WRITTEN CORRECTLY INTO THE BLOCKCHAIN!')
+                    } else {
+                      console.log('ERROR WHILE WRITING NEWS')
+                    }
+                    await scrypta.sleep(3000)
+                    let servicefee = 1 - fees - 0.001
+                    console.log('SENDING SERVICE FEE TO ' + serviceKey.pub)
+                    await scrypta.fundAddress(masterKey.prv, serviceKey.pub, servicefee)
+                    await scrypta.sleep(1000)
+                    scrypta.debug = false
+                  }
+                }
+
+                i++
+              }
+            } else {
+              console.log('MASTER BALANCE IS TOO LOW', masterBalance.balance, 'LYRA')
             }
           } else {
-            console.log('MASTER BALANCE IS TOO LOW', masterBalance.balance, 'LYRA')
+            console.log('ERROR WHILE READING xSID')
           }
-        } else {
-          console.log('ERROR WHILE READING xSID')
+        }else{
+          console.log('NOTHING TO PARSE')
         }
       }
 
